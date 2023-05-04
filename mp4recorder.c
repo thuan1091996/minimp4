@@ -9,8 +9,8 @@
 #endif
 
 #define VIDEO_FPS 20
-//#define CODEC_H264 0
-//#define CODEC_H265 1
+#define CODEC_H264 0
+#define CODEC_H265 1
 
 static uint8_t *preload(const char *path, ssize_t *data_size)
 {
@@ -271,7 +271,7 @@ exit:
     	return -1;
 }
 
-//int main(){
-//	pps_dua_convert_to_mp4(CODEC_H264,"raw.h264", "output.g711", "out.mp4", 200, 78);
-//	return 0;
-//}
+int main(){
+	pps_dua_convert_to_mp4(CODEC_H264,"raw.h264", "output.g711", "out.mp4", 200,200, 78);
+	return 0;
+}
