@@ -67,6 +67,29 @@ static ssize_t get_nal_size(uint8_t *buf, ssize_t size)
     return size;
 }
 
+/**
+ * @brief Get the nal type object
+ * 
+ * @param buffer
+ * @return NAL type or -1 if error 
+ */
+static int8_t get_nal_type(uint8_t *buf)
+{
+    assert(NULL != buf);
+    if ( (buf[0] == 0 && buf[1] == 0 && buf[2] == 0x01) )
+    {
+        return buf[3] & 0x1f;
+    }
+    else if ( (buf[0] == 0 && buf[1] == 0 && buf[2] == 0 && buf[3] == 0x01) )
+    {
+        return buf[4] & 0x1f;
+    }
+    else
+    {
+        return -1;
+    }
+}
+
 static int write_callback(int64_t offset, const void *buffer, size_t size, void *token)
 {
     FILE *f = (FILE*)token;
@@ -203,7 +226,12 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
             printf("error: mp4_h26x_write_nal failed\n");
             goto exit;
         }
+
+        int8_t nal_type = get_nal_type(buf_h264);
+        if( (nal_type == 1) || (nal_type == 5) )
+        {
         video_f_count++;
+        }
         buf_h264  += nal_size;
         h264_size -= nal_size;
 
