@@ -11,6 +11,8 @@ add_executable(mp4_gen mp4recorder.c)
 message(STATUS "Including directory:  ${CMAKE_CURRENT_SOURCE_DIR}/fdk-aac")
 target_include_directories(mp4_gen PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/fdk-aac)
 
+set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Try 2 - Use import target and import location
 ADD_LIBRARY(fdk-aac STATIC IMPORTED)
