@@ -5,7 +5,7 @@
 #include "aacenc_lib.h"
 #include "aacdecoder_lib.h"
 #include "g711.h"
-#define AUDIO_RATE 8000
+#define AUDIO_SAMPLE_RATE 44100
 #endif
 
 #define VIDEO_FPS 20
@@ -117,7 +117,7 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
         return -1;
     }
     /* Remove temp file after load succesfully */
-	unlink(video_path);
+	// unlink(video_path);
 
     FILE *fout = fopen(mp4_file_path, "wb");
     if (!fout)
@@ -158,11 +158,10 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
 		return -1;
 	}
 	/* Remove temp file after load succesfully */
-	unlink(audio_path);
+	// unlink(audio_path);
 
-    ssize_t pcm_size = pcmu_size*2;
     int16_t *alloc_pcm;
-    int16_t *buf_pcm  = alloc_pcm = (int16_t *) malloc(pcm_size * sizeof(char));
+    int16_t *buf_pcm  = alloc_pcm = (int16_t *) malloc(pcmu_size * 2 * sizeof(char));
 	if (!buf_pcm)
 	{
 		printf("error: can't malloc pcm buffer\n");
@@ -177,16 +176,25 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
 	convert_ulaw_buf_2_pcm_buf(buf_pcmu,buf_pcm,pcmu_size);
 	free(buf_pcmu);
 
-    uint32_t sample = 0, total_samples = pcm_size/2;
+    uint32_t sample = 0, total_samples = pcmu_size;
     uint64_t ts = 0, ats = 0;
     HANDLE_AACENCODER aacenc;
     AACENC_InfoStruct info;
     aacEncOpen(&aacenc, 0, 0);
     aacEncoder_SetParam(aacenc, AACENC_TRANSMUX, 0);
     aacEncoder_SetParam(aacenc, AACENC_AFTERBURNER, 1);
-    aacEncoder_SetParam(aacenc, AACENC_BITRATE, 64000);
-    aacEncoder_SetParam(aacenc, AACENC_SAMPLERATE, AUDIO_RATE);
-    aacEncoder_SetParam(aacenc, AACENC_CHANNELMODE, 1);
+    // aacEncoder_SetParam(aacenc, AACENC_BITRATE, 128000);
+    aacEncoder_SetParam(aacenc, AACENC_SAMPLERATE, AUDIO_SAMPLE_RATE);
+    aacEncoder_SetParam(aacenc, AACENC_BITRATEMODE, 5);
+
+    // aacEncoder_SetParam(aacenc, AACENC_CHANNELMODE, 1);
+
+    aacEncoder_SetParam(aacenc, AACENC_AOT, AOT_AAC_LC);
+    // aacEncoder_SetParam(aacenc, AACENC_BITRATE, 128000);  // Set the desired bitrate (e.g., 128 kbps)
+    // aacEncoder_SetParam(aacenc, AACENC_SAMPLERATE, AUDIO_SAMPLE_RATE);  // Set the desired sample rate (e.g., 44100 Hz)
+    aacEncoder_SetParam(aacenc, AACENC_CHANNELMODE, MODE_2);  // Stereo encoding
+    // aacEncoder_SetParam(aacenc, AACENC_CHANNELMODE, MODE_UNKNOWN);  // Stereo encoding
+
     aacEncEncode(aacenc, NULL, NULL, NULL, NULL);
     aacEncInfo(aacenc, &info);
 
@@ -197,7 +205,7 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
     tr.language[2] = 'd';
     tr.language[3] = 0;
     tr.object_type_indication = MP4_OBJECT_TYPE_AUDIO_ISO_IEC_14496_3;
-    tr.time_scale = 90000;
+    tr.time_scale = AUDIO_SAMPLE_RATE;
     tr.default_duration = 0;
     tr.u.a.channelcount = 1;
     int audio_track_id = MP4E_add_track(mux, &tr);
@@ -242,7 +250,7 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
             if (total_samples < 1024)
             {
                 buf_pcm = alloc_pcm;
-                total_samples = pcm_size/2;
+                total_samples = pcmu_size;
             }
             in_args.numInSamples = 1024;
             void *in_ptr = buf_pcm, *out_ptr = buf;
@@ -272,10 +280,11 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
             sample  += in_args.numInSamples;
             buf_pcm += in_args.numInSamples;
             total_samples -= in_args.numInSamples;
-            ats = (uint64_t)sample*90000/AUDIO_RATE;
+            ats = (uint64_t)sample*90000/AUDIO_SAMPLE_RATE;
             audio_f_count++;
 
-            if (MP4E_STATUS_OK != MP4E_put_sample(mux, audio_track_id, buf, out_args.numOutBytes, 1024*90000/AUDIO_RATE, MP4E_SAMPLE_RANDOM_ACCESS))
+            if (MP4E_STATUS_OK != MP4E_put_sample(mux, audio_track_id, buf, out_args.numOutBytes, 1024*90000/AUDIO_SAMPLE_RATE, MP4E_SAMPLE_DEFAULT))
+            // if (MP4E_STATUS_OK != MP4E_put_sample(mux, audio_track_id, buf, out_args.numOutBytes, 1000, MP4E_SAMPLE_DEFAULT))
             {
                 printf("error: MP4E_put_sample failed\n");
                 goto exit;
@@ -300,6 +309,14 @@ exit:
 }
 
 int main(){
-	pps_dua_convert_to_mp4(CODEC_H264,"raw.h264", "output.g711", "out.mp4", 200,200, 78);
+	pps_dua_convert_to_mp4(             CODEC_H264,
+                                        "10_sec_video_with_sound_main.h264", 
+                                        "10_sec_video_with_sound_pcm_mulaw.wav", 
+                                        "10_sec_video_with_sound_out.mp4", 2000, 5000, 0);
 	return 0;
 }
+
+// To get pcm file from mp4
+// ffmpeg -i 10_sec_video_with_sound.mp4 -c:a pcm_mulaw 10_sec_video_with_sound_pcm_mulaw.wav
+// To get h264 video file from mp4
+// ffmpeg -i 10_sec_video_with_sound.mp4 -c:v libx264 -profile:v main -an 10_sec_video_with_sound_main.h264
