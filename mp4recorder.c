@@ -8,7 +8,12 @@
 #define AUDIO_SAMPLE_RATE 44100
 #endif
 
-#define VIDEO_FPS 20
+#define TIMESCALE 90000
+int AUDIO_CHANNEL_NUM;
+int BYTES_PER_AUDIO_SAMPLE_IN_PCM = 2;
+int AUDIO_SAMPLE_RATE = 44100;
+
+#define VIDEO_FPS 23.98
 #define CODEC_H264 0
 #define CODEC_H265 1
 
@@ -192,7 +197,7 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
     aacEncoder_SetParam(aacenc, AACENC_AOT, AOT_AAC_LC);
     // aacEncoder_SetParam(aacenc, AACENC_BITRATE, 128000);  // Set the desired bitrate (e.g., 128 kbps)
     // aacEncoder_SetParam(aacenc, AACENC_SAMPLERATE, AUDIO_SAMPLE_RATE);  // Set the desired sample rate (e.g., 44100 Hz)
-    aacEncoder_SetParam(aacenc, AACENC_CHANNELMODE, MODE_2);  // Stereo encoding
+    aacEncoder_SetParam(aacenc, AACENC_CHANNELMODE, AUDIO_CHANNEL_NUM);  // Stereo encoding
     // aacEncoder_SetParam(aacenc, AACENC_CHANNELMODE, MODE_UNKNOWN);  // Stereo encoding
 
     aacEncEncode(aacenc, NULL, NULL, NULL, NULL);
@@ -205,9 +210,10 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
     tr.language[2] = 'd';
     tr.language[3] = 0;
     tr.object_type_indication = MP4_OBJECT_TYPE_AUDIO_ISO_IEC_14496_3;
-    tr.time_scale = AUDIO_SAMPLE_RATE;
+    tr.time_scale = TIMESCALE;
+    // tr.time_scale = AUDIO_SAMPLE_RATE;
     tr.default_duration = 0;
-    tr.u.a.channelcount = 1;
+    tr.u.a.channelcount = AUDIO_CHANNEL_NUM;
     int audio_track_id = MP4E_add_track(mux, &tr);
     MP4E_set_dsi(mux, audio_track_id, info.confBuf, info.confSize);
 
@@ -229,21 +235,20 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
             h264_size -= 1;
             continue;
         }
-        if (MP4E_STATUS_OK != mp4_h26x_write_nal(&mp4wr, buf_h264, nal_size, 90000/VIDEO_FPS))
+        if (MP4E_STATUS_OK != mp4_h26x_write_nal(&mp4wr, buf_h264, nal_size, TIMESCALE/VIDEO_FPS))
         {
             printf("error: mp4_h26x_write_nal failed\n");
             goto exit;
         }
 
         int8_t nal_type = get_nal_type(buf_h264);
-        if( (nal_type == 1) || (nal_type == 5) )
-        {
-        video_f_count++;
-        }
+        if( (nal_type == 1) || (nal_type == 5) ) video_f_count++;
+
         buf_h264  += nal_size;
         h264_size -= nal_size;
 
-        ts += 90000/VIDEO_FPS;
+        ts += TIMESCALE/VIDEO_FPS;
+        // while (audio_f_count < audio_max_frame)
         while (ats < ts && audio_f_count < audio_max_frame)
         {
         	memset(buf,0,2048);
@@ -254,8 +259,8 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
             }
             in_args.numInSamples = 1024;
             void *in_ptr = buf_pcm, *out_ptr = buf;
-            int in_size          = 2*in_args.numInSamples;
-            int in_element_size  = 2;
+            int in_size          = BYTES_PER_AUDIO_SAMPLE_IN_PCM*in_args.numInSamples;
+            int in_element_size  = BYTES_PER_AUDIO_SAMPLE_IN_PCM;
             int in_identifier    = IN_AUDIO_DATA;
             int out_size         = sizeof(buf);
             int out_identifier   = OUT_BITSTREAM_DATA;
@@ -280,11 +285,14 @@ int pps_dua_convert_to_mp4(int codec_type, char *video_path, char *audio_path, c
             sample  += in_args.numInSamples;
             buf_pcm += in_args.numInSamples;
             total_samples -= in_args.numInSamples;
-            ats = (uint64_t)sample*90000/AUDIO_SAMPLE_RATE;
+            ats = (uint64_t)sample*TIMESCALE/AUDIO_SAMPLE_RATE;
             audio_f_count++;
+            printf("video timestamp is %i\n ", ts);
+            printf("audio timestamp is %i\n ", ats);
 
-            if (MP4E_STATUS_OK != MP4E_put_sample(mux, audio_track_id, buf, out_args.numOutBytes, 1024*90000/AUDIO_SAMPLE_RATE, MP4E_SAMPLE_DEFAULT))
+            if (MP4E_STATUS_OK != MP4E_put_sample(mux, audio_track_id, buf, out_args.numOutBytes, 1024*TIMESCALE/AUDIO_SAMPLE_RATE, MP4E_SAMPLE_DEFAULT))
             // if (MP4E_STATUS_OK != MP4E_put_sample(mux, audio_track_id, buf, out_args.numOutBytes, 1000, MP4E_SAMPLE_DEFAULT))
+            // if (MP4E_STATUS_OK != MP4E_put_sample(mux, audio_track_id, buf, out_args.numOutBytes, 5, MP4E_SAMPLE_RANDOM_ACCESS))
             {
                 printf("error: MP4E_put_sample failed\n");
                 goto exit;
@@ -309,10 +317,40 @@ exit:
 }
 
 int main(){
+
+    SNDFILE *sndfile;
+    SF_INFO sfinfo;
+
+    // Open the WAV file for reading
+    sndfile = sf_open("1_minute_video_with_sound_pcm_mulaw.wav", SFM_READ, &sfinfo);
+    if (sndfile == NULL) {
+        printf("Error: could not open WAV file\n");
+        return 1;
+    }
+
+    // Get the number of audio channels from the WAV file
+    AUDIO_CHANNEL_NUM = sfinfo.channels;
+    AUDIO_SAMPLE_RATE = sfinfo.samplerate;
+
+    // Print the number of audio channels
+    printf("Number of audio channels: %d\n", AUDIO_CHANNEL_NUM);
+    printf("sample rate of audio: %d\n", sfinfo.samplerate);
+
+    // Calculate the duration of the audio file in seconds
+    printf("duration of audio: %d\n", sfinfo.frames / AUDIO_SAMPLE_RATE);
+    
+    // Close the WAV file
+    sf_close(sndfile);
+
 	pps_dua_convert_to_mp4(             CODEC_H264,
-                                        "10_sec_video_with_sound_main.h264", 
-                                        "10_sec_video_with_sound_pcm_mulaw.wav", 
-                                        "10_sec_video_with_sound_out.mp4", 2000, 5000, 0);
+                                        "1_minute_video_with_sound_main.h264",
+                                        "1_minute_video_with_sound_pcm_mulaw.wav", 
+                                        "1_minute_video_with_sound_out.mp4", 200000, 2000000, 0);
+
+	// pps_dua_convert_to_mp4(             CODEC_H264,
+    //                                     "10_sec_video_with_sound_main.h264",
+    //                                     "10_sec_video_with_sound_pcm_mulaw.wav", 
+    //                                     "10_sec_video_with_sound_out.mp4", 200000, 2000000, 0);
 	return 0;
 }
 
