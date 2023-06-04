@@ -27,4 +27,4 @@ add_library(g711
             g711.c )
 
 # Link mp4_gen with libraries
-target_link_libraries(mp4_gen PUBLIC g711)  
+target_link_libraries(mp4_gen PUBLIC g711 sndfile)  

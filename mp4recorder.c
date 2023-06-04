@@ -5,9 +5,8 @@
 #include "aacenc_lib.h"
 #include "aacdecoder_lib.h"
 #include "g711.h"
-#define AUDIO_SAMPLE_RATE 44100
 #endif
-
+#include "sndfile.h"
 #define TIMESCALE 90000
 int AUDIO_CHANNEL_NUM;
 int BYTES_PER_AUDIO_SAMPLE_IN_PCM = 2;
